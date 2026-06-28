@@ -1,0 +1,44 @@
+# Taskfile.yaml
+version: "3"
+
+vars:
+  CLUSTER_NAME: platform-challenge
+  GITHUB_USER: daviDpaD18
+  GITHUB_REPO: mlops-platform-assignment
+
+tasks:
+  cluster:up:
+    desc: Create local k3d cluster
+    cmds:
+      - k3d cluster create {{.CLUSTER_NAME}}
+        --port "80:80@loadbalancer"
+        --port "443:443@loadbalancer"
+        --wait
+    status:
+      - k3d cluster list | grep {{.CLUSTER_NAME}}
+
+  cluster:down:
+    desc: Delete local k3d cluster
+    cmds:
+      - k3d cluster delete {{.CLUSTER_NAME}}
+
+  flux:bootstrap:
+    desc: Bootstrap FluxCD from this repo
+    cmds:
+      - flux bootstrap github
+        --owner={{.GITHUB_USER}}
+        --repository={{.GITHUB_REPO}}
+        --branch=main
+        --path=./flux-system
+        --personal
+
+  flux:status:
+    desc: Check Flux reconciliation status
+    cmds:
+      - flux get all -A
+
+  burnctl:run:
+    desc: Run load test (pass args with --)
+    dir: burnctl
+    cmds:
+      - python main.py {{.CLI_ARGS}}
