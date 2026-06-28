@@ -5,3 +5,4 @@ resources:
   - service.yaml
   - namespace.yaml
   - ingress.yaml
+  - hpa.yaml
