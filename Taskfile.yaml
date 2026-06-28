@@ -13,6 +13,7 @@ tasks:
       - k3d cluster create {{.CLUSTER_NAME}}
         --port "80:80@loadbalancer"
         --port "443:443@loadbalancer"
+        --k3s-arg "--disable=traefik@server:0"
         --wait
     status:
       - k3d cluster list | grep {{.CLUSTER_NAME}}
