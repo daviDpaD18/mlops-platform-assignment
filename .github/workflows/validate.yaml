@@ -19,10 +19,15 @@ jobs:
       - name: Install yamllint
         run: pip install yamllint
 
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
       - name: Lint YAML
         run: yamllint apps/ infrastructure/ flux-system/apps.yaml flux-system/infrastructure.yaml
 
       - name: Validate Flux manifests
         run: |
-          flux local build --path ./apps \
-            --kustomization-file ./apps/kustomization.yaml
+          kustomize build apps/
+          kustomize build infrastructure/
