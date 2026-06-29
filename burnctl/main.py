@@ -89,7 +89,6 @@ async def watch_pods(namespace, stop_event, pod_log):
                     f"CPU avg: {avg_cpu:.0f}m | "
                     f"MEM avg: {avg_mem:.0f}Mi | "
                     f"Pods: {prev_count}   ",
-                    end="", flush=True
                 )
 
         except Exception:
