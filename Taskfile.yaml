@@ -43,3 +43,12 @@ tasks:
     dir: burnctl
     cmds:
       - python main.py {{.CLI_ARGS}}
+  
+  burnctl:reset:
+    desc: Scale down to 1 pod for load test
+    cmds:
+      - kubectl patch hpa loadtester -n loadtester -p '{"spec":{"minReplicas":1, "maxReplicas":1}}'
+      - kubectl scale deployment loadtester -n loadtester --replicas=1
+      - kubectl rollout status deployment/loadtester -n loadtester
+      - kubectl patch hpa loadtester -n loadtester -p '{"spec":{"minReplicas":1, "maxReplicas":5}}'
+      - echo "Ready — run task burnctl:run"
