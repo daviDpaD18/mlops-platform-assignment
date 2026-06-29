@@ -2,12 +2,9 @@ extends: default
 rules:
   line-length:
     max: 300
-    level: warning
   truthy:
     allowed-values: ["true", "false"]
   comments:
     min-spaces-from-content: 1
-  new-line-at-end-of-file:
-    level: warning
-  document-start:
-    level: disable
+  new-line-at-end-of-file: disable
+  document-start: disable
