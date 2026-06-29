@@ -7,27 +7,91 @@ on:
     branches: [main]
 
 jobs:
-  validate:
+  lint:
+    name: Lint YAML
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install flux CLI
-        uses: fluxcd/flux2/action@main
-
       - name: Install yamllint
         run: pip install yamllint
+
+      - name: Lint YAML
+        run: |
+          yamllint apps/ infrastructure/ \
+            flux-system/apps.yaml \
+            flux-system/infrastructure.yaml
+
+  validate:
+    name: Validate Flux manifests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flux CLI
+        uses: fluxcd/flux2/action@main
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
 
       - name: Install kustomize
         run: |
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
 
-      - name: Lint YAML
-        run: yamllint apps/ infrastructure/ flux-system/apps.yaml flux-system/infrastructure.yaml
+      - name: Install flux-local
+        run: pip install flux-local
 
-      - name: Validate Flux manifests
+      - name: Run flux-local test
         run: |
-          kustomize build apps/
-          kustomize build infrastructure/
+          flux-local test \
+            --path ./flux-system \
+            --enable-helm \
+            -v
+
+  diff:
+    name: Diff cluster changes
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: write
+    strategy:
+      matrix:
+        resource:
+          - kustomization
+          - helmrelease
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flux CLI
+        uses: fluxcd/flux2/action@main
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Run flux-local diff
+        uses: allenporter/flux-local/action/diff@8.3.0
+        id: diff
+        with:
+          live-branch: main
+          path: ./flux-system
+          resource: ${{ matrix.resource }}
+
+      - name: Post diff as PR comment
+        uses: mshick/add-pr-comment@v2
+        if: ${{ steps.diff.outputs.diff != '' }}
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          message-id: ${{ github.event.pull_request.number }}/${{ matrix.resource }}
+          message-failure: Unable to post diff
+          message: "**${{ matrix.resource }} diff**\n${{ steps.diff.outputs.diff }}"
