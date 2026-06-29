@@ -6,7 +6,6 @@ metadata:
 spec:
   selector:
     app: loadtester
-            GRESIT: testLinting
   ports:
     - port: 80
       targetPort: 8080
