@@ -3,6 +3,8 @@ import aiohttp
 import argparse
 import time
 import base64
+import os
+from datetime import datetime
 
 def make_auth_header(user, password):
     token = base64.b64encode(f"{user}:{password}".encode()).decode()
@@ -55,7 +57,6 @@ async def watch_pods(namespace, stop_event, pod_log):
     while not stop_event.is_set():
         elapsed = time.time() - pod_log["start_time"]
         try:
-            # non-blocking pod count
             process = await asyncio.create_subprocess_exec(
                 "kubectl", "get", "pods", "-n", namespace,
                 "--field-selector=status.phase=Running", "--no-headers",
@@ -75,14 +76,13 @@ async def watch_pods(namespace, stop_event, pod_log):
                 pod_log["events"].append((elapsed, prev_count, count))
                 prev_count = count
 
-            # non-blocking metrics collection
             avg_cpu, avg_mem, pod_count = await get_pod_metrics_async(namespace)
             if avg_cpu > 0:
                 metrics_samples.append({
                     "elapsed": elapsed,
                     "avg_cpu_m": avg_cpu,
                     "avg_mem_mi": avg_mem,
-                    "pods": pod_count
+                    "pods": prev_count
                 })
                 print(
                     f"[{int(elapsed):02d}s] "
@@ -101,12 +101,93 @@ async def watch_pods(namespace, stop_event, pod_log):
 async def load_worker(session, url, headers, end_time, results):
     while time.time() < end_time:
         latency, status = await send_request(session, url, headers)
-        results.append((latency, status))
+        results.append((latency, status, time.time()))
 
-async def run(url, user, password, concurrency, duration, namespace):
+def generate_chart(pod_log, results, start_time, output_dir):
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("\n[!] matplotlib not installed — skipping chart generation")
+        print("    Install with: pip install matplotlib")
+        return None
+
+    samples = pod_log["metrics_samples"]
+    events = pod_log["events"]
+
+    if not samples:
+        print("\n[!] No metric samples collected — skipping chart generation")
+        return None
+
+    fig, axs = plt.subplots(2, 2, figsize=(13, 8))
+    fig.suptitle("burnctl load test results", fontsize=14, fontweight="bold")
+
+    # 1. Pod count over time
+    pod_elapsed = [s["elapsed"] for s in samples]
+    pod_counts = [s["pods"] for s in samples]
+    axs[0, 0].plot(pod_elapsed, pod_counts, marker="o", color="#7F77DD", linewidth=2)
+    axs[0, 0].set_title("Pod Scaling")
+    axs[0, 0].set_xlabel("Time (s)")
+    axs[0, 0].set_ylabel("Running Pods")
+    axs[0, 0].grid(True, alpha=0.3)
+
+    # mark scale events
+    for elapsed, prev, curr in events:
+        if curr > prev and prev > 0:
+            axs[0, 0].axvline(x=elapsed, color="#1D9E75", linestyle="--", alpha=0.6)
+
+    # 2. CPU usage over time
+    cpu_values = [s["avg_cpu_m"] for s in samples]
+    axs[0, 1].plot(pod_elapsed, cpu_values, marker="o", color="#BA7517", linewidth=2)
+    axs[0, 1].set_title("Average CPU Usage Across Pods")
+    axs[0, 1].set_xlabel("Time (s)")
+    axs[0, 1].set_ylabel("CPU (millicores)")
+    axs[0, 1].grid(True, alpha=0.3)
+
+    # 3. Memory usage over time
+    mem_values = [s["avg_mem_mi"] for s in samples]
+    axs[1, 0].plot(pod_elapsed, mem_values, marker="o", color="#D44C4C", linewidth=2)
+    axs[1, 0].set_title("Average Memory Usage Across Pods")
+    axs[1, 0].set_xlabel("Time (s)")
+    axs[1, 0].set_ylabel("Memory (Mi)")
+    axs[1, 0].grid(True, alpha=0.3)
+
+    # 4. Request latency over time (scatter, colored by status)
+    if results:
+        req_elapsed = [r[2] - start_time for r in results]
+        req_latency_ms = [r[0] * 1000 for r in results]
+        req_status = [r[1] for r in results]
+        colors = []
+        for s in req_status:
+            if s == 202:
+                colors.append("#1D9E75")
+            elif s == 409:
+                colors.append("#BABABA")
+            else:
+                colors.append("#D44C4C")
+        axs[1, 1].scatter(req_elapsed, req_latency_ms, c=colors, s=8, alpha=0.6)
+        axs[1, 1].set_title("Request Latency (green=202, gray=409, red=error)")
+        axs[1, 1].set_xlabel("Time (s)")
+        axs[1, 1].set_ylabel("Latency (ms)")
+        axs[1, 1].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    filepath = os.path.join(output_dir, f"loadtest-{timestamp}.png")
+    plt.savefig(filepath, dpi=120)
+    plt.close()
+
+    print(f"\nChart saved → {filepath}")
+    return filepath
+
+async def run(url, user, password, concurrency, duration, namespace, output_dir, no_chart):
     headers = make_auth_header(user, password)
     stop_event = asyncio.Event()
-    pod_log = {"start_time": time.time(), "events": [], "metrics_samples": []}
+    start_time = time.time()
+    pod_log = {"start_time": start_time, "events": [], "metrics_samples": []}
 
     print(f"Starting load test → {url}")
     print(f"Concurrency: {concurrency} | Duration: {duration}s | Auth: {user}:***")
@@ -128,13 +209,12 @@ async def run(url, user, password, concurrency, duration, namespace):
     stop_event.set()
     await watcher
 
-    # calculate stats
     latencies = []
     errors = 0
     total = len(results)
     status_counts = {}
 
-    for latency, status in results:
+    for latency, status, _ in results:
         latencies.append(latency)
         status_counts[status] = status_counts.get(status, 0) + 1
         if status not in (200, 202, 409):
@@ -185,6 +265,9 @@ async def run(url, user, password, concurrency, duration, namespace):
     print(f"Scale-out at:        {scale_out_at}")
     print("─" * 50)
 
+    if not no_chart:
+        generate_chart(pod_log, results, start_time, output_dir)
+
 def main():
     parser = argparse.ArgumentParser(
         description="burnctl — load test CLI for the platform challenge",
@@ -196,6 +279,8 @@ def main():
     parser.add_argument("--concurrency", type=int, default=20, help="Concurrent requests per batch")
     parser.add_argument("--duration", type=int, default=120, help="Test duration in seconds")
     parser.add_argument("--namespace", default="loadtester", help="Kubernetes namespace to watch")
+    parser.add_argument("--output-dir", default="results", help="Directory to save the chart PNG")
+    parser.add_argument("--no-chart", action="store_true", help="Skip chart generation")
     args = parser.parse_args()
 
     asyncio.run(run(
@@ -205,6 +290,8 @@ def main():
         concurrency=args.concurrency,
         duration=args.duration,
         namespace=args.namespace,
+        output_dir=args.output_dir,
+        no_chart=args.no_chart,
     ))
 
 if __name__ == "__main__":
