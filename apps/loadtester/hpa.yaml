@@ -27,6 +27,6 @@ spec:
     scaleDown:
       stabilizationWindowSeconds: 60
       policies:
-        - type: Replicas
+        - type: Pods
           value: 4
           periodSeconds: 60
