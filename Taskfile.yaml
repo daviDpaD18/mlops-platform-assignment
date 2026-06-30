@@ -23,6 +23,13 @@ tasks:
     cmds:
       - k3d cluster delete {{.CLUSTER_NAME}}
 
+  cluster:reset:
+    desc: Kill cluster and rebuild it from scratch
+    cmds:
+      - task: cluster:down
+      - task: cluster:up
+      - task: flux:bootstrap
+
   flux:bootstrap:
     desc: Bootstrap FluxCD from this repo
     cmds:
@@ -37,6 +44,60 @@ tasks:
     desc: Check Flux reconciliation status
     cmds:
       - flux get all -A
+  
+  flux:reconcile:
+    desc: Force Immediate Flux Reconcile
+    cmds:
+      - flux reconcile source git flux-system
+      - flux reconcile kustomization flux-system
+      - flux reconcile kustomization infrastructure
+      - flux reconcile kustomization apps
+  
+  validate:
+    desc: Run the same checks as CI locally before pushing
+    cmds:
+      - yamllint apps/ infrastructure/ flux-system/apps.yaml flux-system/infrastructure.yaml
+      - kustomize build apps/
+      - kustomize build infrastructure/
+
+  sops:setup:
+    desc: Generate age keypair and configure SOPS
+    cmds:
+      - age-keygen -o age.key
+      - echo "Add public key to .sops.yaml"
+      - echo "age.key" >> .gitignore
+
+  sops:secret:apply:
+    desc: Push age private key to cluster for Flux SOPS 
+    cmds:
+      - kubectl create secret generic sops-age --namespace=flux-system --from-file=age.agekey=age.key --dry-run=client -o yaml | kubectl apply -f -
+
+  status:
+    desc: Full platform health 
+    cmds:
+      - echo " Cluster "
+      - kubectl get nodes
+      - echo " Flux "
+      - flux get all -A
+      - echo " Pods "
+      - kubectl get pods -A
+      - echo " HPA "
+      - kubectl get hpa -n loadtester
+      - echo " Ingress "
+      - kubectl get ingress -n loadtester
+
+  test:endpoints:
+    desc: Validate all endpoints are working correctly
+    cmds:
+      - echo "Testing unauthenticated (expect 401)..."
+      - curl -s -o /dev/null -w "%{http_code}" http://loadtester.localhost
+      - echo ""
+      - echo "Testing authenticated / (expect 200)..."
+      - curl -s -u user:password http://loadtester.localhost
+      - echo ""
+      - echo "Testing authenticated /burn (expect 200)..."
+      - curl -s -u user:password http://loadtester.localhost/burn
+      - echo ""
 
   burnctl:run:
     desc: Run load test (pass args with --)
