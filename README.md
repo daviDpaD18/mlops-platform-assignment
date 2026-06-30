@@ -245,3 +245,75 @@ CPU and memory usage, and request latency over time.
 
 ### Sample output
 
+```text
+Starting load test → http://loadtester.localhost/burn
+Concurrency: 15 | Duration: 120s | Auth: user:***
+──────────────────────────────────────────────────
+
+[00s] Pods: 1
+[00s] CPU avg: 1m   | MEM avg: 46Mi | Pods: 1
+[15s] CPU avg: 420m | MEM avg: 40Mi | Pods: 1
+
+[26s] Pods: 1 ↑ 4
+[31s] CPU avg: 501m | MEM avg: 40Mi | Pods: 4
+
+[36s] Pods: 4 ↑ 5
+[41s] CPU avg: 501m | MEM avg: 40Mi | Pods: 5
+...
+
+──────────────────────────────────────────────────
+Summary
+──────────────────────────────────────────────────
+Duration:            120s
+Concurrency:         15
+
+Requests:            2789
+Successful (202):    17
+Busy (409):          2772  (pods already burning — expected)
+Errors:              0  (0.0%)
+
+Latency p50:         558ms
+Latency p95:         1582ms
+Latency p99:         2140ms
+
+Avg CPU (all pods):  405m  (24 samples)
+Peak CPU (all pods): 501m
+Avg MEM (all pods):  40Mi
+Peak MEM (all pods): 40Mi
+
+Peak pods:           5
+Scale-out at:        26s
+──────────────────────────────────────────────────
+```
+
+![Load test results](docs/loadtest-results.png)
+
+
+### Metrics server
+The Kubernetes Metrics Server 
+scrapes CPU and memory from the kubelet on each node and exposes them via the 
+Kubernetes API, which is what the HPA polls every 15 seconds to make scaling 
+decisions. It is deployed as a HelmRelease through Flux rather than relying on 
+k3d's built-in addon — a deliberate choice that keeps the metrics layer fully 
+managed by GitOps and reproducible from the repository. 
+
+## Trade-offs and limitations
+
+**Age private key lives outside Git.** The SOPS age private key is the only piece 
+of state not managed by GitOps. It must be manually applied to the cluster as a 
+Kubernetes Secret on every rebuild.
+
+**Single-node cluster limits autoscaling realism.** All workloads share one k3d 
+node. The `maxReplicas: 5` ceiling reflects this constraint. 
+
+**CPU request is tuned for demonstration.** The `requests: cpu: 100m` value makes 
+the HPA threshold easy to cross during a load test rather than reflecting real 
+steady-state usage. In production, requests would be right-sized from observed 
+baseline metrics.
+
+**No Prometheus or Grafana.** Monitoring is scoped to the Metrics Server.
+A prod platform would add kube-prometheus-stack for 
+persistent metrics, alerting, and Grafana dashboards.
+
+**Flux polling vs webhook.** Flux reconciles on a 5-minute polling interval. A 
+GitHub webhook would trigger reconciliation within seconds of a push.
