@@ -1,5 +1,5 @@
-*.yaml linguist-language=YAML
-*.yml linguist-language=YAML
-Taskfile.yaml linguist-language=YAML
-*.json linguist-language=JSON
+*.yaml linguist-language=YAML linguist-detectable=true
+*.yml linguist-language=YAML linguist-detectable=true
+Taskfile.yaml linguist-language=YAML linguist-detectable=true
 *.py linguist-detectable=false
+*.json linguist-detectable=false
