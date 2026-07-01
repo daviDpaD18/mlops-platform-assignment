@@ -13,7 +13,7 @@ and an HPA autoscaler validated by a purpose-built load testing CLI.
 All cluster operations, Flux lifecycle commands, and load testing are wrapped in a 
 [Taskfile](https://taskfile.dev) — an alternative to Makefiles that makes the 
 entire platform reproducible with short, self-documenting commands. Run `task --list` to see 
-all available commands. After copying the repo be carefull to update your GITHUB_USER in the Taskfile.
+all available commands. After copying the repo be careful to update your GITHUB_USER in the Taskfile.
 
 ```bash
 task --list
@@ -115,7 +115,7 @@ flowchart LR
 ## Workflow
 
 The repository acts as the source of truth.
-After inital Flux bootstrap Flux CD pools the repository every 5 minutes and reconciles
+After initial Flux bootstrap Flux CD polls the repository every 5 minutes and reconciles
 any drift between Git and what the cluster is running, so no manual `kubectl apply` is needed.
 
 The repository is split into 2 layers. The `infrasturcture` folder contains the platform components
