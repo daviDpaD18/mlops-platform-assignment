@@ -2,4 +2,4 @@
 *.yml linguist-language=YAML
 Taskfile.yaml linguist-language=YAML
 *.json linguist-language=JSON
-burnctl/requirements.txt linguist-detectable=false
+*.py linguist-detectable=false
