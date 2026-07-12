@@ -80,7 +80,7 @@ jobs:
           sudo mv kustomize /usr/local/bin/
 
       - name: Run flux-local diff
-        uses: allenporter/flux-local/action/diff@8.3.0
+        uses: allenporter/flux-local/action/diff@8.4.0
         id: diff
         with:
           live-branch: main
