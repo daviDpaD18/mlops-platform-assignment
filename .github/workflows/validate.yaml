@@ -35,7 +35,7 @@ jobs:
         uses: fluxcd/flux2/action@main
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Install kustomize
         run: |
@@ -72,7 +72,7 @@ jobs:
         uses: fluxcd/flux2/action@main
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Install kustomize
         run: |
